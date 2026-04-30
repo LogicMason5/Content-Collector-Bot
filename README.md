@@ -23,7 +23,7 @@ Welcome to *content collector Bot* ! This Telegram bot allows you to download an
 
 1. **Clone the repository:**
     ```bash
-    git clone https://github.com/rishiTamoghna17/content_collector_telegram_bot.git
+    git clone https://github.com/LogicMason5/Content-Collector-Bot.git
     cd content_collector_telegram_bot
     ```
 
@@ -94,6 +94,6 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 ## Contact
 
-For any questions or suggestions, feel free to open an issue or contact me at tamoghna171099@gmail.com.
+For any questions or suggestions, feel free to open an issue or contact me at logicmason5@gmail.com.
 
 
