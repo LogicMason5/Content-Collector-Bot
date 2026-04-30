@@ -1,73 +1,143 @@
 // bot/bot.ts
 import { Context, Markup, Telegraf } from "telegraf";
-import { socialMediaController } from "../controller/socialMediaController";
-import { sendFile } from "../utils/index";
-import { isValidUrl } from "../regex";
 import axios from "axios";
+import { socialMediaController } from "../controller/socialMediaController";
+import { sendFile } from "../utils";
+import { isValidUrl } from "../regex";
 
-const BOT_TOKEN = process.env.BOT_TOKEN || "";
+const BOT_TOKEN = process.env.BOT_TOKEN;
+if (!BOT_TOKEN) {
+  throw new Error("BOT_TOKEN is missing in environment variables");
+}
+
 const bot = new Telegraf(BOT_TOKEN);
 
-bot.start(async (ctx) => {
+/**
+ * Utility: Safe reply
+ */
+const safeReply = async (ctx: Context, message: string) => {
   try {
-    await ctx.reply(
-      `Hi ${ctx.message.from.first_name},\n\nI can Download Files from Terabox.\n\nMade with ❤️ by @rishi\n\nSend any facebook, instagram, youtube, terabox link to download.`,
-      Markup.inlineKeyboard([
-        Markup.button.url("Owner", "https://t.me/rishi171099"),
-        Markup.button.url("Report bug", "https://t.me/Tamoghna17"),
-      ])
-    );
-  } catch (e) {
-    console.error("Error in start command:", e);
-    await ctx.reply("Sorry, an error occurred while processing your request.");
+    await ctx.reply(message);
+  } catch (err) {
+    console.error("Reply error:", err);
   }
+};
+
+/**
+ * Utility: Fetch joke (non-blocking fallback)
+ */
+const fetchJoke = async (): Promise<string> => {
+  try {
+    const { data } = await axios.get(
+      "https://v2.jokeapi.dev/joke/Dark",
+      {
+        params: {
+          blacklistFlags: "religious,racist,sexist",
+          type: "single",
+        },
+        timeout: 5000,
+      }
+    );
+
+    return data?.joke || "Working on your request... 😄";
+  } catch (error) {
+    console.error("Joke API failed:", error);
+    return "Working on your request... 😄";
+  }
+};
+
+/**
+ * Start Command
+ */
+bot.start(async (ctx) => {
+  const firstName = ctx?.message?.from?.first_name || "there";
+
+  await safeReply(
+    ctx,
+    `Hi ${firstName} 👋\n\n` +
+      `I can download files from:\n` +
+      `• Terabox\n• Facebook\n• Instagram\n• YouTube\n\n` +
+      `Send me a link to get started 🚀`
+  );
+
+  await ctx.reply(
+    "Quick links:",
+    Markup.inlineKeyboard([
+      [Markup.button.url("👤 Owner", "https://t.me/rishi171099")],
+      [Markup.button.url("🐞 Report Bug", "https://t.me/Tamoghna17")],
+    ])
+  );
 });
 
+/**
+ * Main Text Handler
+ */
 bot.on("text", async (ctx: Context) => {
   try {
-    if (ctx.message && "text" in ctx.message) {
-      console.log("ctx.message-->>", ctx.message);
+    const messageText = (ctx.message as any)?.text?.trim();
 
-      const messageText = ctx.message.text;
-      console.log("messageText-->>", messageText);
-
-      if (!isValidUrl(messageText)) {
-        await ctx.reply(messageText === "hi" ? "Hey there" : "Invalid URL.");
-        return;
-      }
-
-      await ctx.reply("Processing... Please wait.");
-      const response = await axios.get("https://v2.jokeapi.dev/joke/Dark?blacklistFlags=religious,racist,sexist&type=single");
-
-      const joke = response.data.joke;
-
-      // Sending the joke to the user
-      await ctx.reply(`Here's a little something to make you smile while we process your request: 😄\n\n${joke}`);
-
-      const details = await socialMediaController(messageText);
-      console.log("details", JSON.stringify(details, null, 2));
-
-      await ctx.reply("Sending Files Please Wait.!!");
-      await sendFile(details, ctx);
-    } else {
-      await ctx.reply("No message text found.");
+    if (!messageText) {
+      return safeReply(ctx, "No message text found.");
     }
-  } catch (e) {
-    console.error("Error processing message:", e);
-    await ctx.reply("An error occurred while processing your request.");
+
+    // Simple greeting
+    if (/^hi|hello$/i.test(messageText)) {
+      return safeReply(ctx, "Hey there 👋");
+    }
+
+    // Validate URL
+    if (!isValidUrl(messageText)) {
+      return safeReply(ctx, "❌ Please send a valid URL.");
+    }
+
+    await safeReply(ctx, "⏳ Processing your request...");
+
+    // Run joke + processing in parallel
+    const [joke, details] = await Promise.all([
+      fetchJoke(),
+      socialMediaController(messageText),
+    ]);
+
+    await safeReply(
+      ctx,
+      `😄 While you wait:\n\n${joke}`
+    );
+
+    if (!details) {
+      return safeReply(ctx, "❌ Failed to fetch media details.");
+    }
+
+    await safeReply(ctx, "📤 Sending files... Please wait.");
+
+    await sendFile(details, ctx);
+
+    await safeReply(ctx, "✅ Done!");
+  } catch (error) {
+    console.error("Processing error:", error);
+    await safeReply(
+      ctx,
+      "❌ Something went wrong. Please try again later."
+    );
   }
 });
 
+/**
+ * Sticker Handler
+ */
 bot.on("sticker", (ctx) => ctx.reply("👍"));
-bot.hears("hi", (ctx) => ctx.reply("Hey there"));
 
-export const launchBot = () => {
-  bot
-    .launch()
-    .then(() => {
-      console.log("Bot launched successfully");
-    })
-    .catch((e) => {
-      console.error("Error launching bot:", e);
-    });
+/**
+ * Launch Bot
+ */
+export const launchBot = async () => {
+  try {
+    await bot.launch();
+    console.log("✅ Bot launched successfully");
+
+    // Graceful shutdown
+    process.once("SIGINT", () => bot.stop("SIGINT"));
+    process.once("SIGTERM", () => bot.stop("SIGTERM"));
+  } catch (error) {
+    console.error("❌ Error launching bot:", error);
+  }
 };
